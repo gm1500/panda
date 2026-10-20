@@ -4,8 +4,9 @@ from .base import BaseHandle, BaseSTBootloaderHandle, TIMEOUT
 from .constants import McuType
 
 class PandaUsbHandle(BaseHandle):
-  def __init__(self, libusb_handle):
+  def __init__(self, libusb_handle, bcd_device=None):
     self._libusb_handle = libusb_handle
+    self.bcd_device = bcd_device
 
   def close(self):
     self._libusb_handle.close()

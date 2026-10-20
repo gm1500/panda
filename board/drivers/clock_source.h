@@ -46,7 +46,12 @@ void clock_source_init(bool enable_channel1) {
 
   // Sync with slave
   register_set(&(TIM1->SMCR), TIM_SMCR_MSM , 0xFFFFU);
+#ifdef STM32F4
+  // AR0231 cameras on DOS share an unstaggered start-of-frame pulse.
+  register_set(&(TIM1->CR2), (0b0010U << TIM_CR2_MMS_Pos), 0xFFFFU);
+#else
   register_set(&(TIM1->CR2), (0b0111U << TIM_CR2_MMS_Pos), 0xFFFFU);
+#endif
   register_set(&(TIM8->SMCR), (0b0100U << TIM_SMCR_SMS_Pos) | (0b000U << TIM_SMCR_TS_Pos), 0xFFFFU);
 
   // Setup slave timer (TIM8)

@@ -129,6 +129,7 @@ class Panda:
 
   # from https://github.com/commaai/openpilot/blob/103b4df18cbc38f4129555ab8b15824d1a672bdf/cereal/log.capnp#L648
   HW_TYPE_UNKNOWN = b'\x00'
+  HW_TYPE_DOS = b'\x06'
   HW_TYPE_RED_PANDA = b'\x07'
   HW_TYPE_TRES = b'\x09'
   HW_TYPE_CUATRO = b'\x0a'
@@ -150,9 +151,10 @@ class Panda:
   HEALTH_FLAG_HARDFAULT_RESET = 1 << 8
 
   H7_DEVICES = [HW_TYPE_RED_PANDA, HW_TYPE_TRES, HW_TYPE_CUATRO, HW_TYPE_BODY]
-  SUPPORTED_DEVICES = H7_DEVICES
+  F4_DEVICES = [HW_TYPE_DOS]
+  SUPPORTED_DEVICES = F4_DEVICES + H7_DEVICES
 
-  INTERNAL_DEVICES = (HW_TYPE_TRES, HW_TYPE_CUATRO)
+  INTERNAL_DEVICES = (HW_TYPE_DOS, HW_TYPE_TRES, HW_TYPE_CUATRO)
 
   HARNESS_STATUS_NC = 0
   HARNESS_STATUS_NORMAL = 1
@@ -278,7 +280,7 @@ class Panda:
 
   @classmethod
   def usb_connect(cls, serial, claim=True, no_error=False):
-    handle, usb_serial, bootstub = None, None, None
+    handle, usb_serial, bootstub, bcd_device = None, None, None, None
     context = usb1.USBContext()
     context.open()
     try:
@@ -297,6 +299,7 @@ class Panda:
 
             usb_serial = this_serial
             bootstub = (device.getProductID() & 0xF0) == 0xe0
+            bcd_device = device.getbcdDevice()
             handle = device.open()
             if sys.platform not in ("win32", "cygwin", "msys", "darwin"):
               handle.setAutoDetachKernelDriver(True)
@@ -310,7 +313,7 @@ class Panda:
 
     usb_handle = None
     if handle is not None:
-      usb_handle = PandaUsbHandle(handle)
+      usb_handle = PandaUsbHandle(handle, bcd_device)
     else:
       context.close()
 
@@ -357,7 +360,7 @@ class Panda:
 
   def reset(self, enter_bootstub=False, enter_bootloader=False, reconnect=True):
     if enter_bootstub or enter_bootloader:
-      assert (hw_type := self.get_type()) in self.SUPPORTED_DEVICES, f"Unknown HW: {hw_type}"
+      assert (hw_type := self.get_type()) in self.SUPPORTED_DEVICES or self._legacy_bootstub_response(hw_type), f"Unknown HW: {hw_type}"
 
     # no response is expected since it resets right away
     timeout = 5000 if isinstance(self._handle, PandaSpiHandle) else 15000
@@ -438,14 +441,14 @@ class Panda:
       pass
 
   def flash(self, fn=None, code=None, reconnect=True):
-    assert (hw_type := self.get_type()) in self.SUPPORTED_DEVICES, f"Unknown HW: {hw_type}"
+    assert (hw_type := self.get_type()) in self.SUPPORTED_DEVICES or self._legacy_bootstub_response(hw_type), f"Unknown HW: {hw_type}"
 
     if self.up_to_date(fn=fn):
       logger.info("flash: already up to date")
       return
 
     if not fn:
-      fn = os.path.join(FW_PATH, McuType.H7.config.app_fn)
+      fn = os.path.join(FW_PATH, self.get_mcu_type().config.app_fn)
     assert os.path.isfile(fn)
     logger.debug("flash: main version is %s", self.get_version())
     if not self.bootstub:
@@ -460,7 +463,7 @@ class Panda:
     logger.debug("flash: bootstub version is %s", self.get_version())
 
     # do flash
-    Panda.flash_static(self._handle, code, mcu_type=McuType.H7)
+    Panda.flash_static(self._handle, code, mcu_type=self.get_mcu_type())
 
     # reconnect
     if reconnect:
@@ -511,7 +514,7 @@ class Panda:
   def up_to_date(self, fn=None) -> bool:
     current = self.get_signature()
     if fn is None:
-      fn = os.path.join(FW_PATH, McuType.H7.config.app_fn)
+      fn = os.path.join(FW_PATH, self.get_mcu_type().config.app_fn)
     expected = Panda.get_signature_from_firmware(fn)
     return (current == expected)
 
@@ -617,7 +620,26 @@ class Panda:
     return bytes(part_1 + part_2)
 
   def get_type(self):
-    return self._handle.controlRead(Panda.REQUEST_IN, 0xc1, 0, 0, 0x40)
+    ret = self._handle.controlRead(Panda.REQUEST_IN, 0xc1, 0, 0, 0x40)
+    # Early C3 bootstubs report their board type only in the USB descriptor.
+    if self._legacy_bootstub_response(ret):
+      bcd = self._handle.bcd_device
+      if bcd is not None and bcd != 0x2300:
+        return bytes([bcd >> 8])
+    return ret
+
+  def _legacy_bootstub_response(self, ret):
+    return self.bootstub and isinstance(self._handle, PandaUsbHandle) and ret.startswith(b'\xff\x00\xc1\x3e\xde\xad\xd0\x0d')
+
+  def get_mcu_type(self) -> McuType:
+    hw_type = self.get_type()
+    if hw_type in self.F4_DEVICES or self._legacy_bootstub_response(hw_type):
+      # First-production C3 bootstubs predate both identifiers. All H7
+      # bootstubs implement at least bcdDevice (upstream's legacy fallback).
+      return McuType.F4
+    if hw_type in self.H7_DEVICES:
+      return McuType.H7
+    raise ValueError(f"Unknown MCU for hardware type {hw_type!r}")
 
   def get_packets_versions(self):
     dat = self._handle.controlRead(Panda.REQUEST_IN, 0xdd, 0, 0, 8)
@@ -645,7 +667,7 @@ class Panda:
     return self._serial
 
   def get_dfu_serial(self):
-    return PandaDFU.st_serial_to_dfu_serial(self._serial, McuType.H7)
+    return PandaDFU.st_serial_to_dfu_serial(self._serial, self.get_mcu_type())
 
   def get_uid(self):
     """

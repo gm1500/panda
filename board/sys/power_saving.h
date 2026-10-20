@@ -55,6 +55,7 @@ void set_power_save_state(bool enable) {
 }
 
 static void enter_stop_mode(void) {
+#ifdef STM32H7
   // set all GPIO to analog mode to reduce power, analog mode also disables pull resistors
   register_set(&(GPIOA->MODER), 0xFFFFFFFFU, 0xFFFFFFFFU);
   register_set(&(GPIOB->MODER), 0xFFFFFFFFU, 0xFFFFFFFFU);
@@ -154,4 +155,8 @@ static void enter_stop_mode(void) {
   __WFI();
 
   NVIC_SystemReset();
+#else
+  // The F4 DOS board does not implement the H7 stop-mode wakeup circuit.
+  NVIC_SystemReset();
+#endif
 }
