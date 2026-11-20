@@ -125,7 +125,7 @@ static void tick_handler(void) {
     heartbeat_tick_counter += 1U;
 
     // start the siren early on power loss while engaged
-    if (safety.heartbeat_engaged && (heartbeat_tick_counter > 2U) && (current_board->read_voltage_mV() < 6000U)) {
+    if ((safety.heartbeat_engaged || safety.lateral_requested) && (heartbeat_tick_counter > 2U) && (current_board->read_voltage_mV() < 6000U)) {
       siren_countdown = 3U;
     }
 
@@ -203,7 +203,7 @@ static void tick_handler(void) {
           puth(heartbeat_counter);
           print(" seconds. Safety is set to SILENT mode.\n");
 
-          if (safety.heartbeat_engaged) {
+          if (safety.heartbeat_engaged || safety.lateral_requested) {
             siren_countdown = 3U;
           }
 
@@ -215,6 +215,7 @@ static void tick_handler(void) {
           // clear heartbeat engaged state
           mpu_safety_open();
           safety_heartbeat(false);
+          safety_set_lateral_request(false, false);
           mpu_safety_close();
 
           if (safety_setup.current_safety_mode != SAFETY_SILENT) {

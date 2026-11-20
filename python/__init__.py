@@ -151,6 +151,9 @@ class Panda:
   HEALTH_FLAG_NMI_RESET = 1 << 7
   HEALTH_FLAG_HARDFAULT_RESET = 1 << 8
   HEALTH_FLAG_HEARTBEAT_DISABLED = 1 << 9
+  HEALTH_FLAG_LATERAL_ALLOWED = 1 << 10
+  HEALTH_FLAG_LATERAL_SUPPORTED = 1 << 11
+  HEALTH_FLAG_LATERAL_SUSPENDED = 1 << 12
 
   H7_DEVICES = [HW_TYPE_RED_PANDA, HW_TYPE_TRES, HW_TYPE_CUATRO, HW_TYPE_BODY]
   SUPPORTED_DEVICES = H7_DEVICES
@@ -539,6 +542,9 @@ class Panda:
       "ignition_line": bool(flags & self.HEALTH_FLAG_IGNITION_LINE),
       "ignition_can": bool(flags & self.HEALTH_FLAG_IGNITION_CAN),
       "controls_allowed": bool(flags & self.HEALTH_FLAG_CONTROLS_ALLOWED),
+      "lateral_allowed": bool(flags & self.HEALTH_FLAG_LATERAL_ALLOWED),
+      "lateral_supported": bool(flags & self.HEALTH_FLAG_LATERAL_SUPPORTED),
+      "lateral_suspended": bool(flags & self.HEALTH_FLAG_LATERAL_SUSPENDED),
       "car_harness_status": a[9],
       "safety_mode": a[10],
       "safety_param": a[11],
@@ -787,8 +793,9 @@ class Panda:
       ret.extend(dat)
     return bytes(ret)
 
-  def send_heartbeat(self, engaged=True):
-    self._handle.controlWrite(Panda.REQUEST_OUT, 0xf3, engaged, 0, b'')
+  def send_heartbeat(self, engaged=True, lateral_requested=False, lateral_enabled=False, lateral_fault=False):
+    lateral_flags = int(lateral_requested) | (int(lateral_enabled) << 1) | (int(lateral_fault) << 2)
+    self._handle.controlWrite(Panda.REQUEST_OUT, 0xf3, engaged, lateral_flags, b'')
 
   # disable heartbeat checks for use outside of openpilot
   # sending a heartbeat will reenable the checks

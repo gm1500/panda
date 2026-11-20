@@ -10,6 +10,9 @@
 #define HEALTH_FLAG_NMI_RESET                (1U << 7)
 #define HEALTH_FLAG_HARDFAULT_RESET          ((uint16_t)1U << 8)
 #define HEALTH_FLAG_HEARTBEAT_DISABLED       ((uint16_t)1U << 9)
+#define HEALTH_FLAG_LATERAL_ALLOWED          ((uint16_t)1U << 10)
+#define HEALTH_FLAG_LATERAL_SUPPORTED        ((uint16_t)1U << 11)
+#define HEALTH_FLAG_LATERAL_SUSPENDED        ((uint16_t)1U << 12)
 
 struct __attribute__((packed)) health_t {
   uint32_t uptime_pkt;

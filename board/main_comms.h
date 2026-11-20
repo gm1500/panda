@@ -23,6 +23,9 @@ static int get_health_pkt(void *dat) {
   health->flags_pkt |= harness_check_ignition() ? HEALTH_FLAG_IGNITION_LINE : 0U;
   health->flags_pkt |= ignition_can ? HEALTH_FLAG_IGNITION_CAN : 0U;
   health->flags_pkt |= safety.controls_allowed ? HEALTH_FLAG_CONTROLS_ALLOWED : 0U;
+  health->flags_pkt |= safety.lateral_allowed ? HEALTH_FLAG_LATERAL_ALLOWED : 0U;
+  health->flags_pkt |= safety_setup.gm_lateral_only ? HEALTH_FLAG_LATERAL_SUPPORTED : 0U;
+  health->flags_pkt |= safety.lateral_suspended ? HEALTH_FLAG_LATERAL_SUSPENDED : 0U;
   health->flags_pkt |= power_save_enabled ? HEALTH_FLAG_POWER_SAVE_ENABLED : 0U;
   health->flags_pkt |= heartbeat_lost ? HEALTH_FLAG_HEARTBEAT_LOST : 0U;
   health->flags_pkt |= safety.safety_rx_checks_invalid ? HEALTH_FLAG_SAFETY_RX_CHECKS_INVALID : 0U;
@@ -388,6 +391,8 @@ int comms_control_handler(ControlPacket_t *req, uint8_t *resp) {
         heartbeat_disabled = false;
         mpu_safety_open();
         safety_heartbeat(req->param1 == 1U);
+        // Legacy hosts send param2=0; corrupt flags latch lateral suspension.
+        safety_set_lateral_request_flags(req->param2);
         mpu_safety_close();
         break;
       }
